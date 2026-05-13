@@ -1,0 +1,8 @@
+{
+  "name": "TorneGestão",
+  "description": "Sistema de gestão de peças, materiais e otimização de corte plasma para caldeiraria e usinagem.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
