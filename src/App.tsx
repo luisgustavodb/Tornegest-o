@@ -20,18 +20,22 @@ import {
   Camera,
   ArrowLeft,
   Scissors,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Zap,
+  Gauge
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import { Item, Folder, ItemType, AppData, PlasmaCalculation } from './types';
+import { Item, Folder, ItemType, AppData, PlasmaCalculation, PlasmaLife } from './types';
 import { supabase } from './lib/supabase';
 
 // Constants
 const DEFAULT_DATA: AppData = {
   folders: [],
   items: [],
-  plasmaCalculations: []
+  plasmaCalculations: [],
+  plasmaLife: { id: 'current', nozzle: 100, electrode: 100, updatedAt: Date.now() }
 };
 
 // --- Components ---
@@ -63,10 +67,11 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [foldersRes, itemsRes, calcsRes] = await Promise.all([
+      const [foldersRes, itemsRes, calcsRes, lifeRes] = await Promise.all([
         supabase.from('folders').select('*').order('created_at', { ascending: true }),
         supabase.from('items').select('*').order('created_at', { ascending: false }),
-        supabase.from('calculations').select('*').order('created_at', { ascending: false })
+        supabase.from('calculations').select('*').order('created_at', { ascending: false }),
+        supabase.from('plasma_monitoring').select('*').eq('id', 'current').maybeSingle()
       ]);
 
       setData({
@@ -97,7 +102,13 @@ export default function App() {
           margin: c.margin,
           result: c.result,
           createdAt: new Date(c.created_at).getTime(),
-        }))
+        })),
+        plasmaLife: lifeRes.data ? {
+          id: lifeRes.data.id,
+          nozzle: lifeRes.data.nozzle,
+          electrode: lifeRes.data.electrode,
+          updatedAt: new Date(lifeRes.data.updated_at).getTime()
+        } : DEFAULT_DATA.plasmaLife
       });
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -263,6 +274,25 @@ export default function App() {
     }
   };
 
+  const updatePlasmaLife = async (newLife: Partial<PlasmaLife>) => {
+    const updated = { ...data.plasmaLife, ...newLife, updatedAt: Date.now() };
+    
+    const { error } = await supabase
+      .from('plasma_monitoring')
+      .upsert({ 
+        id: 'current', 
+        nozzle: updated.nozzle, 
+        electrode: updated.electrode,
+        updated_at: new Date().toISOString()
+      });
+
+    if (!error) {
+      setData(prev => ({ ...prev, plasmaLife: updated }));
+    } else {
+      console.error('Error updating plasma life:', error);
+    }
+  };
+
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -307,7 +337,7 @@ export default function App() {
           <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center">
             <Layers className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase">Torne<span className="text-orange-500">Gestão</span></h1>
+          <h1 className="text-lg font-black text-slate-800 tracking-tight uppercase">Usitek <span className="text-orange-500">Machpro</span></h1>
         </div>
         <div className="flex items-center gap-2">
           {loading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
@@ -323,7 +353,7 @@ export default function App() {
           <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-orange-100">
             <Layers className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-xl font-black text-slate-800 tracking-tight">TORNE<span className="text-orange-500">GESTÃO</span></h1>
+          <h1 className="text-xl font-black text-slate-800 tracking-tight leading-tight">USITEK<br /><span className="text-orange-500">MACHPRO</span></h1>
         </div>
 
         <div className="space-y-1">
@@ -386,17 +416,44 @@ export default function App() {
           </div>
         </div>
 
-        {/* Efficiency Widget placeholder */}
-        <div className="mt-auto bg-gradient-to-br from-slate-900 to-indigo-900 rounded-2xl p-4 text-white shadow-xl shadow-indigo-100">
-          <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-2">Supabase Cloud</p>
-          <div className="text-2xl font-black mb-1 flex items-center gap-2">
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Sincronizado'}
+        {/* Plasma Status Widget */}
+        <div className="mt-auto space-y-4">
+          <div 
+            onClick={() => setActiveTab('plasma')}
+            className={cn(
+              "p-4 rounded-2xl border transition-all text-white cursor-pointer group",
+              (data.plasmaLife.nozzle < 20 || data.plasmaLife.electrode < 20) 
+                ? "bg-red-600 shadow-lg shadow-red-200" 
+                : "bg-indigo-600 shadow-lg shadow-indigo-200"
+            )}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Zap className="w-4 h-4" />
+              <span className="text-[10px] font-black uppercase tracking-widest">Status Plasma</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-xl font-black">{Math.min(data.plasmaLife.nozzle, data.plasmaLife.electrode)}%</span>
+                <span className="text-[9px] uppercase font-bold opacity-70">Vida Restante</span>
+              </div>
+              {(data.plasmaLife.nozzle < 20 || data.plasmaLife.electrode < 20) ? (
+                <AlertTriangle className="w-6 h-6 animate-pulse" />
+              ) : (
+                <div className="w-8 h-8 rounded-full border-2 border-white/20 flex items-center justify-center">
+                  <Gauge className="w-4 h-4" />
+                </div>
+              )}
+            </div>
           </div>
-          <p className="text-[10px] text-indigo-200 leading-tight italic">
-            Banco de dados profissional ativo
-          </p>
-          <div className="w-full bg-indigo-950 h-1.5 rounded-full mt-3 overflow-hidden">
-            <div className={cn("h-full bg-emerald-400 transition-all duration-1000", loading ? "w-1/2" : "w-full")}></div>
+
+          <div className="bg-slate-900 rounded-2xl p-4 text-white">
+            <p className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider mb-2">Supabase Cloud</p>
+            <div className="text-xl font-black mb-1 flex items-center gap-2">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sincronizado'}
+            </div>
+            <div className="w-full bg-indigo-950 h-1 rounded-full mt-3 overflow-hidden">
+              <div className={cn("h-full bg-emerald-400 transition-all duration-1000", loading ? "w-1/2" : "w-full")}></div>
+            </div>
           </div>
         </div>
       </nav>
@@ -416,11 +473,14 @@ export default function App() {
         <button 
           onClick={() => setActiveTab('plasma')}
           className={cn(
-            "flex flex-col items-center gap-1 transition-all",
+            "flex flex-col items-center gap-1 transition-all relative",
             activeTab === 'plasma' ? "text-orange-600" : "text-slate-400"
           )}
         >
           <Scissors className="w-6 h-6" />
+          {(data.plasmaLife.nozzle < 20 || data.plasmaLife.electrode < 20) && (
+            <div className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+          )}
           <span className="text-[10px] font-black uppercase tracking-widest">Corte</span>
         </button>
         <button 
@@ -475,7 +535,7 @@ export default function App() {
                   </div>
 
                   <div className="flex items-center gap-2 text-slate-400 mb-2">
-                    <button onClick={() => setSelectedFolder(null)} className="hover:text-orange-500 transition-colors font-bold text-xs uppercase tracking-widest">TorneGestão</button>
+                    <button onClick={() => setSelectedFolder(null)} className="hover:text-orange-500 transition-colors font-bold text-xs uppercase tracking-widest">Usitek Machpro</button>
                     {selectedFolder && (
                       <>
                         <ChevronRight className="w-4 h-4" />
@@ -608,6 +668,8 @@ export default function App() {
               exit={{ opacity: 0, scale: 0.95 }}
               className="max-w-4xl mx-auto"
             >
+              <PlasmaLifeMonitor life={data.plasmaLife} onUpdate={updatePlasmaLife} />
+              
               <PlasmaTool onSaveCalc={saveCalculation} />
               
               <div className="mt-12 space-y-6">
@@ -1190,5 +1252,90 @@ function ItemForm({ folders, onSubmit, initialData }: { folders: Folder[], onSub
         {initialData ? 'Atualizar' : 'Cadastrar'}
       </button>
     </form>
+  );
+}
+
+function PlasmaLifeMonitor({ life, onUpdate }: { life: PlasmaLife, onUpdate: (val: Partial<PlasmaLife>) => void }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const isLow = life.nozzle < 20 || life.electrode < 20;
+
+  return (
+    <div className={cn(
+      "p-6 rounded-3xl border-2 transition-all mb-6",
+      isLow ? "bg-red-50 border-red-200" : "bg-emerald-50 border-emerald-200"
+    )}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className={cn(
+            "p-2 rounded-xl",
+            isLow ? "bg-red-500 text-white" : "bg-emerald-500 text-white"
+          )}>
+            <Zap className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-black text-slate-800 uppercase tracking-tight">Vida dos Consumíveis</h4>
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Estado atual da tocha plasma</p>
+          </div>
+        </div>
+        <button 
+          onClick={() => setIsEditing(!isEditing)}
+          className="text-xs font-black text-indigo-600 hover:underline uppercase tracking-widest"
+        >
+          {isEditing ? 'Fechar' : 'Ajustar Vida'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <LifeIndicator 
+          label="Bico" 
+          value={life.nozzle} 
+          isEditing={isEditing}
+          onChange={v => onUpdate({ nozzle: v })}
+        />
+        <LifeIndicator 
+          label="Eletrodo" 
+          value={life.electrode} 
+          isEditing={isEditing}
+          onChange={v => onUpdate({ electrode: v })}
+        />
+      </div>
+
+      {isLow && (
+        <div className="mt-4 flex items-center gap-2 bg-red-100/50 p-2 rounded-lg text-red-600 font-black text-[10px] uppercase tracking-widest">
+          <AlertTriangle className="w-4 h-4" />
+          <span>Atenção: Consumíveis com vida útil baixa!</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LifeIndicator({ label, value, isEditing, onChange }: { label: string, value: number, isEditing: boolean, onChange: (v: number) => void }) {
+  const color = value < 20 ? 'text-red-500' : value < 50 ? 'text-orange-500' : 'text-emerald-500';
+  const bgColor = value < 20 ? 'bg-red-500' : value < 50 ? 'bg-orange-500' : 'bg-emerald-500';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+        <span className={cn("text-lg font-black", color)}>{value}%</span>
+      </div>
+      <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+        <div 
+          className={cn("h-full transition-all duration-500", bgColor)} 
+          style={{ width: `${value}%` }} 
+        />
+      </div>
+      {isEditing && (
+        <input 
+          type="range" 
+          min="0" 
+          max="100" 
+          value={value} 
+          onChange={e => onChange(parseInt(e.target.value))}
+          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-1"
+        />
+      )}
+    </div>
   );
 }

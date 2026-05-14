@@ -42,4 +42,12 @@ export interface AppData {
   folders: Folder[];
   items: Item[];
   plasmaCalculations: PlasmaCalculation[];
+  plasmaLife: PlasmaLife;
+}
+
+export interface PlasmaLife {
+  id: string;
+  nozzle: number;
+  electrode: number;
+  updatedAt: number;
 }
